@@ -1,0 +1,2 @@
+You are planning a news article.
+Create a concise outline for the requested topic.

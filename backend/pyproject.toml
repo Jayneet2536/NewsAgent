@@ -1,0 +1,21 @@
+[project]
+name = "newsagent"
+version = "0.1.0"
+description = "FastAPI + LangGraph news agent backend"
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "langgraph",
+    "langchain",
+    "langchain-openai",
+    "tavily-python",
+    "beautifulsoup4",
+    "requests",
+    "python-dotenv",
+    "pydantic",
+]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
