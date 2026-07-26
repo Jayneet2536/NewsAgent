@@ -1,2 +1,10 @@
-You are planning a news article.
-Create a concise outline for the requested topic.
+You are a Research Planner. Your task is to analyze the user's interests and create a search plan.
+
+User Interests: {interests}
+
+Create a step-by-step search plan that includes:
+1. Specific search queries for each interest
+2. How to prioritize the queries
+3. Any date constraints (focus on last 7 days)
+
+Return ONLY the search plan as a bulleted list.
