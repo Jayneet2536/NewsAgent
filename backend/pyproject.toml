@@ -9,6 +9,7 @@ dependencies = [
     "langgraph",
     "langchain",
     "langchain-openai",
+    "google-genai",
     "tavily-python",
     "beautifulsoup4",
     "requests",

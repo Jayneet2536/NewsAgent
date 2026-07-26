@@ -1,9 +1,22 @@
-from typing import List, Optional, TypedDict
+from typing import Dict, List, TypedDict
 
 
-class GraphState(TypedDict, total=False):
+class Article(TypedDict):
+    title: str
+    url: str
+    content: str
+    snippet: str
     topic: str
-    plan: List[str]
-    research: List[str]
-    article: Optional[str]
-    verification: Optional[str]
+
+
+class AgentState(TypedDict):
+    interests: List[str]
+    plan: str
+    articles: List[Dict]
+    draft: str
+    verification_score: float
+    retry_count: int
+    final_digest: str
+
+
+GraphState = AgentState
