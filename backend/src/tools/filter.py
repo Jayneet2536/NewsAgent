@@ -8,13 +8,22 @@ logger = logging.getLogger(__name__)
 
 
 class RelevanceFilter:
-    def __init__(self, threshold: float = 0.3, max_results: int = 5) -> None:
+    def __init__(
+        self,
+        threshold: float = 0.3,
+        max_results: int = 5,
+        use_llm: bool = True,
+    ) -> None:
         self.threshold = threshold
         self.max_results = max_results
+        self.use_llm = use_llm
         self._llm_client: Optional[Any] = None
 
     def score_relevance(self, interest: str, article_text: str) -> float:
         keyword_score = self._keyword_relevance_score(interest, article_text)
+        if not self.use_llm:
+            return keyword_score
+
         llm_score = self._llm_relevance_score(interest, article_text)
 
         if llm_score is None:
@@ -69,31 +78,31 @@ class RelevanceFilter:
         )
 
         try:
-            response = client.models.generate_content(
+            response = client.chat.completions.create(
                 model=settings.model_name,
-                contents=prompt,
+                messages=[{"role": "user", "content": prompt}],
             )
-            text = getattr(response, "text", "")
+            text = response.choices[0].message.content or ""
             return self._parse_score(text)
         except Exception as error:
             logger.warning("LLM relevance check failed: %s", error)
             return None
 
     def _get_llm_client(self) -> Optional[Any]:
-        if not settings.gemini_api_key:
-            logger.warning("Skipping LLM relevance check because GEMINI_API_KEY is missing.")
+        if not settings.groq_api_key:
+            logger.warning("Skipping LLM relevance check because GROQ_API_KEY is missing.")
             return None
 
         if self._llm_client is not None:
             return self._llm_client
 
         try:
-            from google import genai
+            from groq import Groq
         except ImportError:
-            logger.warning("Skipping LLM relevance check because google-genai is missing.")
+            logger.warning("Skipping LLM relevance check because groq is missing.")
             return None
 
-        self._llm_client = genai.Client(api_key=settings.gemini_api_key)
+        self._llm_client = Groq(api_key=settings.groq_api_key)
         return self._llm_client
 
     def _article_text(self, article: Dict[str, Any]) -> str:

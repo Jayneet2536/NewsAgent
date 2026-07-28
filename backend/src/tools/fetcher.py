@@ -1,9 +1,10 @@
 import logging
 import re
+import warnings
 from typing import Optional
 
 import requests
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
 from requests import RequestException
 
 logger = logging.getLogger(__name__)
@@ -15,9 +16,15 @@ class ArticleFetcher:
         self.max_retries = max_retries
         self.headers = {
             "User-Agent": (
-                "Mozilla/5.0 (compatible; NewsAgent/0.1; "
-                "+https://example.com/newsagent)"
-            )
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/126.0.0.0 Safari/537.36"
+            ),
+            "Accept": (
+                "text/html,application/xhtml+xml,application/xml;q=0.9,"
+                "text/plain;q=0.8,*/*;q=0.7"
+            ),
+            "Accept-Language": "en-US,en;q=0.9",
         }
 
     def fetch(self, url: str) -> Optional[str]:
@@ -37,6 +44,7 @@ class ArticleFetcher:
                     return text
 
                 logger.warning("No article text found url=%r attempt=%s", url, attempt)
+                break
             except RequestException as error:
                 logger.warning(
                     "Article fetch failed url=%r attempt=%s error=%s",
@@ -52,16 +60,78 @@ class ArticleFetcher:
         return None
 
     def _extract_text(self, html: str) -> Optional[str]:
-        soup = BeautifulSoup(html, "html.parser")
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
+            soup = BeautifulSoup(html, "html.parser")
 
-        for tag in soup(["script", "style", "noscript"]):
+        for tag in soup(["script", "style", "noscript", "nav", "footer", "header"]):
             tag.decompose()
 
-        paragraphs = [
-            self._clean_text(paragraph.get_text(" ", strip=True))
-            for paragraph in soup.find_all("p")
+        text = self._extract_from_article_containers(soup)
+        if text:
+            return text
+
+        text = self._extract_from_paragraphs(soup)
+        if text:
+            return text
+
+        return self._extract_from_metadata(soup)
+
+    def _extract_from_article_containers(self, soup: BeautifulSoup) -> Optional[str]:
+        selectors = [
+            "article",
+            "main",
+            "[role='main']",
+            ".article-content",
+            ".post-content",
+            ".entry-content",
+            ".story-content",
+            ".content",
         ]
-        text = "\n\n".join(paragraph for paragraph in paragraphs if paragraph)
+
+        for selector in selectors:
+            container = soup.select_one(selector)
+            if not container:
+                continue
+
+            paragraphs = self._paragraph_text(container.find_all("p"))
+            if paragraphs:
+                return paragraphs
+
+            text = self._clean_text(container.get_text(" ", strip=True))
+            if len(text) >= 200:
+                return text
+
+        return None
+
+    def _extract_from_paragraphs(self, soup: BeautifulSoup) -> Optional[str]:
+        return self._paragraph_text(soup.find_all("p"))
+
+    def _extract_from_metadata(self, soup: BeautifulSoup) -> Optional[str]:
+        for selector in (
+            "meta[property='og:description']",
+            "meta[name='description']",
+            "meta[name='twitter:description']",
+        ):
+            tag = soup.select_one(selector)
+            if not tag:
+                continue
+
+            text = self._clean_text(tag.get("content", ""))
+            if text:
+                return text
+
+        return None
+
+    def _paragraph_text(self, paragraphs: list) -> Optional[str]:
+        cleaned_paragraphs = [
+            self._clean_text(paragraph.get_text(" ", strip=True))
+            for paragraph in paragraphs
+        ]
+        useful_paragraphs = [
+            paragraph for paragraph in cleaned_paragraphs if len(paragraph) >= 40
+        ]
+        text = "\n\n".join(useful_paragraphs)
 
         return text or None
 

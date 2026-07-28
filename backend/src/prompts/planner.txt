@@ -4,7 +4,12 @@ User Interests: {interests}
 
 Create a step-by-step search plan that includes:
 1. Specific search queries for each interest
-2. How to prioritize the queries
+2. How to prioritize the queries (which to search first)
 3. Any date constraints (focus on last 7 days)
 
-Return ONLY the search plan as a bulleted list.
+Return ONLY the search plan as a bulleted list with clear, specific search queries.
+
+Example format:
+- Search for "latest AI breakthroughs 2026"
+- Search for "Indian cricket team news"
+- Search for "Indian startup funding rounds"

@@ -3,7 +3,7 @@ uvicorn
 langgraph
 langchain
 langchain-openai
-google-genai
+groq
 tavily-python
 beautifulsoup4
 requests
