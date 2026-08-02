@@ -11,6 +11,12 @@ from ..tools.search import TavilySearch
 
 logger = logging.getLogger(__name__)
 
+_SMART_QUOTES = str.maketrans({
+    "\u201c": '"', "\u201d": '"',
+    "\u2018": "'", "\u2019": "'",
+})
+_ZERO_WIDTH_CHARS = re.compile(r"[\u200b\u200c\u200d\ufeff]")
+
 
 def researcher_node(state: AgentState) -> Dict[str, Any]:
     """Search, fetch, and filter articles for the user's interests."""
@@ -34,7 +40,7 @@ def researcher_node(state: AgentState) -> Dict[str, Any]:
     for query in queries:
         logger.info("Researcher searching query=%r", query)
         try:
-            search_results = search_client.search(query, max_results=3)
+            search_results = search_client.search(query, max_results=3, days=7, topic="news")
         except Exception as error:
             logger.error("Search failed for query=%r: %s", query, error)
             continue
@@ -57,8 +63,11 @@ def researcher_node(state: AgentState) -> Dict[str, Any]:
                 continue
 
             if not content:
-                logger.warning("Skipping article with no fetched content url=%r", url)
-                continue
+                logger.warning("Article fetch failed, falling back to snippet for url=%r", url)
+                content = result.get("snippet", "")
+                if not content:
+                    logger.warning("Skipping article with no fetched content and no snippet url=%r", url)
+                    continue
 
             fetched_articles.append(
                 {
@@ -84,23 +93,25 @@ def _extract_search_queries(plan: str, interests: List[str]) -> List[str]:
     queries = []
 
     for line in plan.splitlines():
-        cleaned_line = line.strip()
+        cleaned_line = line.translate(_SMART_QUOTES)
+        cleaned_line = _ZERO_WIDTH_CHARS.sub("", cleaned_line).strip()
         if not cleaned_line:
             continue
 
         quoted_queries = re.findall(r'"([^"]+)"', cleaned_line)
         if quoted_queries:
-            queries.extend(quoted_queries)
+            queries.extend(q.strip() for q in quoted_queries)
             continue
 
         query = re.sub(r"^[-*\d.\s]+", "", cleaned_line)
         query = re.sub(r"^search\s+for\s+", "", query, flags=re.IGNORECASE)
+        query = re.sub(r"\s*\([^()]*\)\s*$", "", query)  # drop trailing "(past 7 days)" etc.
         query = query.strip()
         if query:
             queries.append(query)
 
     if not queries:
-        queries = [f"latest {interest} news last 7 days" for interest in interests]
+        queries = [f"latest {interest} news" for interest in interests]
 
     return _deduplicate(queries)
 
@@ -170,6 +181,12 @@ def _deduplicate(items: List[str]) -> List[str]:
 def _is_non_article_url(url: str) -> bool:
     """Identify URLs that are usually feeds or listing pages, not articles."""
     parsed_url = urlparse(url)
+
+    # Reject anything that isn't a real absolute http(s) URL — catches the
+    # relative "/goto?url=..." redirect fragments some search results return.
+    if parsed_url.scheme not in ("http", "https") or not parsed_url.netloc:
+        return True
+
     path = parsed_url.path.lower().rstrip("/")
 
     if path.endswith(("/feed", ".xml", ".rss", "/rss")):

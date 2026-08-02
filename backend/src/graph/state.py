@@ -15,6 +15,7 @@ class AgentState(TypedDict):
     articles: List[Dict]
     draft: str
     verification_score: float
+    verification_issues: List[str]
     retry_count: int
     final_digest: str
 

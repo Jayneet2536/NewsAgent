@@ -1,5 +1,5 @@
 fastapi
-uvicorn
+uvicorn[standard]
 langgraph
 langchain
 langchain-openai
@@ -9,3 +9,5 @@ beautifulsoup4
 requests
 python-dotenv
 pydantic
+httpx
+pytest

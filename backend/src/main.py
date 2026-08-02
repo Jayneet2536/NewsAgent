@@ -1,19 +1,8 @@
-from fastapi import FastAPI
+"""src/main.py — thin re-export shim.
 
-from .config import settings
-from .graph.workflow import build_workflow
+All real application logic now lives in src/api/.
+This module exists only for backward-compatibility with any tooling that
+imports or launches ``src.main:app`` directly.
+"""
 
-app = FastAPI(title=settings.app_name, version="0.1.0")
-workflow = build_workflow()
-
-
-@app.get("/health")
-async def health_check() -> dict[str, str]:
-    return {"status": "ok", "service": settings.app_name}
-
-
-@app.post("/run")
-async def run_workflow(payload: dict[str, str]) -> dict[str, object]:
-    topic = payload.get("topic", "latest AI news")
-    result = workflow.invoke({"topic": topic})
-    return result
+from .api.main import app  # noqa: F401  (re-exported)

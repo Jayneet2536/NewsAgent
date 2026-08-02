@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 class RelevanceFilter:
     def __init__(
         self,
-        threshold: float = 0.3,
+        threshold: float = 0.2,
         max_results: int = 5,
         use_llm: bool = True,
     ) -> None:
