@@ -1,10 +1,4 @@
-"""FastAPI application factory for the NewsAgent REST API.
 
-Launch with:
-    uvicorn src.api.main:app --reload
-or via the project root run.py:
-    python run.py
-"""
 
 import logging
 import os
@@ -15,9 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from ..config import settings
 from .router import router
 
-# ---------------------------------------------------------------------------
-# Logging
-# ---------------------------------------------------------------------------
+
 
 logging.basicConfig(
     level=logging.DEBUG if settings.debug else logging.INFO,
@@ -25,9 +17,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# CORS origins
-# ---------------------------------------------------------------------------
+
 
 _frontend_origin = os.getenv("FRONTEND_ORIGIN", "").strip()
 if _frontend_origin:
@@ -40,9 +30,7 @@ else:
     )
     _allow_origins = ["*"]
 
-# ---------------------------------------------------------------------------
-# App
-# ---------------------------------------------------------------------------
+
 
 app = FastAPI(
     title=settings.app_name,

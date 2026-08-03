@@ -1,0 +1,718 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NewsAgent — AI-Powered News Digest</title>
+  <meta name="description" content="Ask NewsAgent anything in plain English and receive a curated, AI-verified news digest in seconds." />
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- Marked.js for Markdown rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+  <style>
+    /* =====================================================================
+       DESIGN TOKENS
+    ===================================================================== */
+    :root {
+      --bg-deep:        #050d1a;
+      --bg-card:        rgba(10, 20, 40, 0.72);
+      --bg-input:       rgba(255, 255, 255, 0.06);
+      --border:         rgba(100, 150, 255, 0.12);
+      --border-active:  rgba(100, 180, 255, 0.4);
+      --accent-1:       #4f8ef7;
+      --accent-2:       #7b5ef7;
+      --accent-3:       #00d4ff;
+      --text-primary:   #e8f0fe;
+      --text-secondary: #8ba3cc;
+      --text-muted:     #4a6180;
+      --success:        #22c55e;
+      --warning:        #f59e0b;
+      --danger:         #ef4444;
+      --node-idle:      #2a3a55;
+      --node-running:   #4f8ef7;
+      --node-done:      #22c55e;
+      --radius-sm:      8px;
+      --radius-md:      14px;
+      --radius-lg:      20px;
+      --shadow-glow:    0 0 40px rgba(79, 142, 247, 0.15);
+      --transition:     all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg-deep);
+      color: var(--text-primary);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* =====================================================================
+       ANIMATED BACKGROUND
+    ===================================================================== */
+    .bg-gradient {
+      position: fixed; inset: 0; z-index: 0;
+      background:
+        radial-gradient(ellipse 80% 60% at 20% 10%,  rgba(79,142,247,0.09)  0%, transparent 70%),
+        radial-gradient(ellipse 60% 50% at 80% 80%,  rgba(123,94,247,0.07)  0%, transparent 70%),
+        radial-gradient(ellipse 50% 40% at 50% 50%,  rgba(0,212,255,0.04)   0%, transparent 70%),
+        linear-gradient(135deg, #050d1a 0%, #060e1e 50%, #040c18 100%);
+      animation: bgPulse 14s ease-in-out infinite alternate;
+    }
+    @keyframes bgPulse { from { opacity:1 } to { opacity:.82 } }
+
+    .bg-grid {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background-image:
+        linear-gradient(rgba(79,142,247,.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(79,142,247,.025) 1px, transparent 1px);
+      background-size: 52px 52px;
+    }
+
+    /* =====================================================================
+       LAYOUT
+    ===================================================================== */
+    .page-wrapper {
+      position: relative; z-index: 1;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 0 20px 100px;
+    }
+
+    /* =====================================================================
+       HEADER
+    ===================================================================== */
+    header { padding: 52px 0 38px; text-align: center; }
+
+    .logo {
+      display: inline-flex; align-items: center; gap: 14px;
+      margin-bottom: 14px;
+    }
+
+    .logo-icon {
+      width: 50px; height: 50px; border-radius: 14px;
+      background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 24px;
+      box-shadow: 0 0 28px rgba(79,142,247,.45);
+    }
+
+    .logo-text {
+      font-size: 28px; font-weight: 800; letter-spacing: -0.6px;
+      background: linear-gradient(135deg, var(--accent-1), var(--accent-3));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .tagline { color: var(--text-secondary); font-size: 15px; }
+
+    /* =====================================================================
+       SEARCH FORM
+    ===================================================================== */
+    .search-section { margin-bottom: 36px; }
+
+    #queryInput {
+      width: 100%; min-height: 92px;
+      background: var(--bg-input);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 16px 20px;
+      color: var(--text-primary);
+      font-family: inherit; font-size: 15px; line-height: 1.65;
+      resize: vertical; outline: none;
+      transition: var(--transition);
+      backdrop-filter: blur(12px);
+    }
+    #queryInput::placeholder { color: var(--text-muted); }
+    #queryInput:focus {
+      border-color: var(--border-active);
+      background: rgba(255,255,255,.08);
+      box-shadow: 0 0 0 3px rgba(79,142,247,.1), var(--shadow-glow);
+    }
+
+    .search-footer {
+      display: flex; align-items: center;
+      justify-content: space-between; gap: 12px;
+      margin-top: 12px; flex-wrap: wrap;
+    }
+
+    .hint-text { font-size: 12px; color: var(--text-muted); }
+
+    #submitBtn {
+      padding: 13px 30px;
+      background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+      border: none; border-radius: var(--radius-sm);
+      color: #fff; font-family: inherit;
+      font-size: 14px; font-weight: 600;
+      cursor: pointer;
+      display: flex; align-items: center; gap: 8px;
+      transition: var(--transition);
+      box-shadow: 0 4px 20px rgba(79,142,247,.38);
+      white-space: nowrap; letter-spacing: 0.3px;
+    }
+    #submitBtn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 30px rgba(79,142,247,.55);
+    }
+    #submitBtn:active:not(:disabled)  { transform: translateY(0); }
+    #submitBtn:disabled { opacity: .6; cursor: not-allowed; transform: none; }
+
+    /* =====================================================================
+       GLASS CARD
+    ===================================================================== */
+    .glass-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      backdrop-filter: blur(22px);
+      -webkit-backdrop-filter: blur(22px);
+      padding: 28px;
+      margin-bottom: 24px;
+      animation: fadeInUp 0.4s ease both;
+    }
+    .glass-card:hover { border-color: rgba(100,150,255,.22); }
+
+    .section-label {
+      font-size: 11px; font-weight: 700;
+      letter-spacing: 1.6px; text-transform: uppercase;
+      color: var(--accent-1); margin-bottom: 20px;
+    }
+
+    /* =====================================================================
+       PIPELINE
+    ===================================================================== */
+    #pipelinePanel { display: none; }
+
+    .pipeline-track {
+      display: flex; align-items: stretch; position: relative;
+    }
+
+    .pipeline-node {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; gap: 10px;
+      padding: 16px 6px; position: relative;
+    }
+
+    /* Connector line */
+    .pipeline-node:not(:last-child)::after {
+      content: '';
+      position: absolute; top: 35px; left: 60%; right: -40%;
+      height: 2px;
+      background: linear-gradient(90deg, var(--node-idle), transparent);
+      transition: var(--transition);
+    }
+    .pipeline-node.done:not(:last-child)::after {
+      background: linear-gradient(90deg, var(--node-done), rgba(34,197,94,.2));
+    }
+    .pipeline-node.running:not(:last-child)::after {
+      background: linear-gradient(90deg, var(--node-running), transparent);
+    }
+
+    .node-circle {
+      width: 48px; height: 48px; border-radius: 50%;
+      border: 2px solid var(--node-idle);
+      background: rgba(42,58,85,.4);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px; position: relative; z-index: 1;
+      transition: var(--transition);
+    }
+    .pipeline-node.running .node-circle {
+      border-color: var(--node-running);
+      background: rgba(79,142,247,.15);
+      box-shadow: 0 0 22px rgba(79,142,247,.45);
+      animation: nodePulse 1.6s ease-in-out infinite;
+    }
+    .pipeline-node.done .node-circle {
+      border-color: var(--node-done);
+      background: rgba(34,197,94,.15);
+      box-shadow: 0 0 18px rgba(34,197,94,.32);
+      color: var(--node-done); font-size: 22px; font-weight: 700;
+    }
+    @keyframes nodePulse {
+      0%,100% { box-shadow: 0 0 14px rgba(79,142,247,.3); }
+      50%      { box-shadow: 0 0 30px rgba(79,142,247,.65); }
+    }
+
+    .node-label {
+      font-size: 12px; font-weight: 600;
+      color: var(--text-muted); text-align: center;
+      transition: var(--transition);
+    }
+    .pipeline-node.running .node-label { color: var(--accent-1); }
+    .pipeline-node.done    .node-label { color: var(--node-done); }
+
+    .node-status-text {
+      font-size: 10px; color: var(--text-muted);
+      min-height: 14px; text-align: center;
+      transition: var(--transition);
+    }
+    .pipeline-node.running .node-status-text { color: var(--accent-1); }
+    .pipeline-node.done    .node-status-text { color: var(--node-done); }
+
+    /* spinner */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner {
+      width: 22px; height: 22px;
+      border: 2.5px solid rgba(79,142,247,.2);
+      border-top-color: var(--accent-1);
+      border-radius: 50%;
+      animation: spin 0.75s linear infinite;
+    }
+
+    /* =====================================================================
+       PLAN
+    ===================================================================== */
+    #planSection { display: none; }
+
+    .plan-item {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 7px 0;
+      border-bottom: 1px solid rgba(100,150,255,.05);
+      font-size: 13px; line-height: 1.7;
+      color: var(--text-secondary);
+      animation: fadeInUp .3s ease both;
+    }
+    .plan-item:last-child { border-bottom: none; }
+
+    .plan-bullet {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--accent-1); margin-top: 8px; flex-shrink: 0;
+    }
+
+    /* =====================================================================
+       DIGEST
+    ===================================================================== */
+    #digestSection { display: none; }
+
+    .digest-body {
+      color: var(--text-primary); line-height: 1.82; font-size: 15px;
+    }
+    .digest-body h1,
+    .digest-body h2,
+    .digest-body h3 {
+      margin: 26px 0 13px; font-weight: 700;
+    }
+    .digest-body h1 { font-size: 22px; }
+    .digest-body h2 {
+      font-size: 19px; color: var(--accent-1);
+      padding-bottom: 9px;
+      border-bottom: 1px solid var(--border);
+    }
+    .digest-body h3 { font-size: 15px; color: var(--text-primary); }
+    .digest-body p  { margin-bottom: 13px; }
+    .digest-body ul, .digest-body ol { padding-left: 22px; margin-bottom: 13px; }
+    .digest-body li { margin-bottom: 11px; }
+    .digest-body a {
+      color: var(--accent-1); text-decoration: none;
+      border-bottom: 1px solid rgba(79,142,247,.3);
+      transition: var(--transition);
+    }
+    .digest-body a:hover { color: var(--accent-3); border-bottom-color: var(--accent-3); }
+    .digest-body strong { color: var(--text-primary); font-weight: 600; }
+    .digest-body code {
+      background: rgba(79,142,247,.1); border-radius: 4px;
+      padding: 2px 7px; font-size: 13px; color: var(--accent-3);
+    }
+    .digest-body blockquote {
+      border-left: 3px solid var(--accent-1);
+      padding-left: 16px; color: var(--text-secondary);
+      margin: 16px 0; font-style: italic;
+    }
+    .digest-body hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+
+    /* =====================================================================
+       VERIFICATION
+    ===================================================================== */
+    #verificationSection { display: none; }
+
+    .verification-grid {
+      display: grid; grid-template-columns: auto 1fr;
+      gap: 22px; align-items: start;
+    }
+
+    .score-circle {
+      width: 92px; height: 92px; border-radius: 50%;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      border: 3px solid; flex-shrink: 0;
+      animation: scoreReveal .5s cubic-bezier(.34,1.56,.64,1) both;
+    }
+    @keyframes scoreReveal {
+      from { transform: scale(.6); opacity: 0; }
+      to   { transform: scale(1);  opacity: 1; }
+    }
+    .score-circle.high   { border-color: var(--success); color: var(--success); box-shadow: 0 0 26px rgba(34,197,94,.3); }
+    .score-circle.medium { border-color: var(--warning); color: var(--warning); box-shadow: 0 0 26px rgba(245,158,11,.3); }
+    .score-circle.low    { border-color: var(--danger);  color: var(--danger);  box-shadow: 0 0 26px rgba(239,68,68,.3); }
+
+    .score-number { font-size: 28px; font-weight: 800; line-height: 1; }
+    .score-label  { font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; opacity: .8; margin-top: 3px; }
+
+    .issues-list { display: flex; flex-direction: column; gap: 9px; }
+
+    .issue-item {
+      display: flex; gap: 10px; align-items: flex-start;
+      background: rgba(239,68,68,.06);
+      border: 1px solid rgba(239,68,68,.15);
+      border-radius: var(--radius-sm);
+      padding: 10px 14px;
+      font-size: 13px; color: var(--text-secondary);
+      animation: fadeInUp .3s ease both;
+    }
+    .issue-icon { color: var(--danger); flex-shrink: 0; font-size: 14px; }
+
+    .no-issues {
+      display: flex; align-items: center; gap: 10px;
+      color: var(--success); font-size: 14px; font-weight: 500;
+    }
+
+    /* stats */
+    .stats-bar { display: flex; gap: 16px; flex-wrap: wrap; }
+    .stat-chip {
+      display: flex; align-items: center; gap: 8px;
+      background: rgba(79,142,247,.08);
+      border: 1px solid rgba(79,142,247,.15);
+      border-radius: 100px; padding: 6px 16px;
+      font-size: 12px; color: var(--text-secondary);
+    }
+    .stat-chip-val { font-weight: 700; color: var(--accent-1); }
+
+    /* =====================================================================
+       ERROR
+    ===================================================================== */
+    #errorBanner {
+      display: none; align-items: center; gap: 12px;
+      background: rgba(239,68,68,.1);
+      border: 1px solid rgba(239,68,68,.3);
+      border-radius: var(--radius-md);
+      padding: 16px 20px; margin-bottom: 24px;
+      font-size: 14px; color: #fca5a5;
+      animation: fadeInUp .3s ease;
+    }
+    .error-icon { font-size: 20px; flex-shrink: 0; }
+
+    /* =====================================================================
+       ANIMATIONS
+    ===================================================================== */
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* =====================================================================
+       RESPONSIVE
+    ===================================================================== */
+    @media (max-width: 580px) {
+      .pipeline-node  { padding: 12px 3px; }
+      .node-circle    { width: 38px; height: 38px; font-size: 15px; }
+      .node-label     { font-size: 10px; }
+      .verification-grid { grid-template-columns: 1fr; justify-items: center; }
+      .glass-card { padding: 20px; }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="bg-gradient" aria-hidden="true"></div>
+  <div class="bg-grid"     aria-hidden="true"></div>
+
+  <div class="page-wrapper">
+
+    <!-- HEADER -->
+    <header>
+      <div class="logo">
+        <div class="logo-icon" aria-hidden="true">📰</div>
+        <span class="logo-text">NewsAgent</span>
+      </div>
+      <p class="tagline">Ask anything in plain English — get an AI-verified news digest</p>
+    </header>
+
+    <!-- SEARCH FORM -->
+    <section class="search-section" aria-label="Query input">
+      <textarea
+        id="queryInput"
+        placeholder="e.g. latest AI advancements and recent raids by Tukaram Mundhe on hotels…"
+        aria-label="Research query"
+        rows="3"
+      ></textarea>
+      <div class="search-footer">
+        <span class="hint-text">Ctrl+Enter to submit &nbsp;·&nbsp; Describe the topics you want covered</span>
+        <button id="submitBtn" onclick="startResearch()">
+          <span>✦</span> Generate Digest
+        </button>
+      </div>
+    </section>
+
+    <!-- ERROR -->
+    <div id="errorBanner" role="alert" aria-live="assertive">
+      <span class="error-icon">⚠️</span>
+      <span id="errorMessage">Something went wrong.</span>
+    </div>
+
+    <!-- PIPELINE STATUS -->
+    <div id="pipelinePanel" class="glass-card">
+      <div class="section-label">⚡ Pipeline Status</div>
+      <div class="pipeline-track" id="pipelineTrack"></div>
+    </div>
+
+    <!-- RESEARCH PLAN -->
+    <div id="planSection" class="glass-card">
+      <div class="section-label">🗺 Research Plan</div>
+      <div id="planContent"></div>
+    </div>
+
+    <!-- NEWS DIGEST -->
+    <div id="digestSection" class="glass-card">
+      <div class="section-label">📋 News Digest</div>
+      <div class="digest-body" id="digestBody"></div>
+    </div>
+
+    <!-- VERIFICATION -->
+    <div id="verificationSection" class="glass-card">
+      <div class="section-label">🔍 Verification</div>
+      <div class="verification-grid">
+        <div class="score-circle" id="scoreCircle">
+          <span class="score-number" id="scoreNumber">—</span>
+          <span class="score-label">Score</span>
+        </div>
+        <div id="issuesList" class="issues-list"></div>
+      </div>
+      <div style="margin-top:20px;padding-top:18px;border-top:1px solid var(--border)">
+        <div class="stats-bar" id="statsBar"></div>
+      </div>
+    </div>
+
+  </div><!-- /page-wrapper -->
+
+  <script>
+    /* ------------------------------------------------------------------
+       CONFIG
+    ------------------------------------------------------------------ */
+    // In Docker (served by Nginx), API calls go through the Nginx proxy at ''.
+    // When opening index.html directly from disk (local dev), fall back to localhost:8000.
+    const API_BASE = (window.location.protocol === 'file:')
+      ? 'http://localhost:8000'
+      : '';
+
+    /* ------------------------------------------------------------------
+       NODE METADATA
+    ------------------------------------------------------------------ */
+    const NODE_META = {
+      planner_node:    { icon: '🗺', label: 'Planner',    desc: 'Building search plan…' },
+      researcher_node: { icon: '🔍', label: 'Researcher', desc: 'Fetching articles…' },
+      writer_node:     { icon: '✍️', label: 'Writer',     desc: 'Composing digest…' },
+      verifier_node:   { icon: '✅', label: 'Verifier',   desc: 'Checking facts…' },
+    };
+    const NODE_ORDER = ['planner_node','researcher_node','writer_node','verifier_node'];
+
+    let currentES = null;
+    let streamCompleted = false;
+
+    /* ------------------------------------------------------------------
+       DOM
+    ------------------------------------------------------------------ */
+    const $  = id => document.getElementById(id);
+    const show     = id => { $(id).style.display = 'block'; };
+    const showFlex = id => { $(id).style.display = 'flex'; };
+    const hide     = id => { $(id).style.display = 'none'; };
+
+    /* ------------------------------------------------------------------
+       PIPELINE
+    ------------------------------------------------------------------ */
+    function buildPipeline() {
+      const track = $('pipelineTrack');
+      track.innerHTML = '';
+      NODE_ORDER.forEach(n => {
+        const m = NODE_META[n];
+        track.insertAdjacentHTML('beforeend', `
+          <div class="pipeline-node" id="pnode-${n}">
+            <div class="node-circle" id="pcircle-${n}">${m.icon}</div>
+            <span class="node-label">${m.label}</span>
+            <span class="node-status-text" id="pstatus-${n}">Idle</span>
+          </div>`);
+      });
+    }
+
+    function setNode(nodeId, state) {
+      const el = $(`pnode-${nodeId}`);
+      if (!el) return;
+      el.className = 'pipeline-node ' + state;
+      const circle = $(`pcircle-${nodeId}`);
+      const m = NODE_META[nodeId];
+      if (state === 'running') {
+        circle.innerHTML = '<div class="spinner"></div>';
+        $(`pstatus-${nodeId}`).textContent = m.desc;
+      } else if (state === 'done') {
+        circle.innerHTML = '✓';
+        $(`pstatus-${nodeId}`).textContent = 'Done';
+      } else {
+        circle.innerHTML = m.icon;
+        $(`pstatus-${nodeId}`).textContent = 'Idle';
+      }
+    }
+
+    /* ------------------------------------------------------------------
+       RENDER PLAN
+    ------------------------------------------------------------------ */
+    function renderPlan(text) {
+      const c = $('planContent');
+      c.innerHTML = '';
+      text.split('\n').filter(l => l.trim()).forEach((line, i) => {
+        const clean = line.replace(/^[-*•]\s*/, '').trim();
+        if (!clean) return;
+        const d = document.createElement('div');
+        d.className = 'plan-item';
+        d.style.animationDelay = (i * 0.05) + 's';
+        d.innerHTML = `<div class="plan-bullet"></div><span>${clean}</span>`;
+        c.appendChild(d);
+      });
+      show('planSection');
+    }
+
+    /* ------------------------------------------------------------------
+       RENDER DIGEST
+    ------------------------------------------------------------------ */
+    function renderDigest(md) {
+      const body = $('digestBody');
+      body.innerHTML = marked.parse(md, { breaks: true, gfm: true });
+      body.querySelectorAll('a').forEach(a => {
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+      });
+      show('digestSection');
+    }
+
+    /* ------------------------------------------------------------------
+       RENDER VERIFICATION
+    ------------------------------------------------------------------ */
+    function renderVerification(v, stats) {
+      const score = Math.round(v.score);
+      const issues = v.issues || [];
+
+      // Score circle
+      $('scoreNumber').textContent = score;
+      $('scoreCircle').className = 'score-circle ' +
+        (score >= 80 ? 'high' : score >= 60 ? 'medium' : 'low');
+
+      // Issues
+      const il = $('issuesList');
+      il.innerHTML = '';
+      if (issues.length === 0) {
+        il.innerHTML = `<div class="no-issues"><span>✅</span><span>No factual issues detected — all claims verified against sources.</span></div>`;
+      } else {
+        issues.forEach((issue, i) => {
+          const d = document.createElement('div');
+          d.className = 'issue-item';
+          d.style.animationDelay = (i * 0.08) + 's';
+          d.innerHTML = `<span class="issue-icon">⚠</span><span>${issue}</span>`;
+          il.appendChild(d);
+        });
+      }
+
+      // Stats
+      $('statsBar').innerHTML = `
+        <div class="stat-chip">📄 Articles fetched: <span class="stat-chip-val">${stats.articles_fetched}</span></div>
+        <div class="stat-chip">🔄 Retries: <span class="stat-chip-val">${stats.retries}</span></div>
+        <div class="stat-chip">🎯 Score: <span class="stat-chip-val">${score}/100</span></div>`;
+
+      show('verificationSection');
+    }
+
+    /* ------------------------------------------------------------------
+       MAIN
+    ------------------------------------------------------------------ */
+    function startResearch() {
+      const q = $('queryInput').value.trim();
+      if (!q) { showError('Please enter a research query.'); return; }
+
+      hideError();
+      hide('pipelinePanel');
+      hide('planSection');
+      hide('digestSection');
+      hide('verificationSection');
+      $('planContent').innerHTML = '';
+      $('digestBody').innerHTML = '';
+
+      if (currentES) { currentES.close(); currentES = null; }
+      streamCompleted = false;
+
+      buildPipeline();
+      show('pipelinePanel');
+
+      const btn = $('submitBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<div class="spinner" style="width:16px;height:16px"></div>&nbsp;Running…';
+
+      const url = API_BASE + '/api/research/stream?q=' + encodeURIComponent(q);
+      const es = new EventSource(url);
+      currentES = es;
+
+      es.onmessage = evt => {
+        let data;
+        try { data = JSON.parse(evt.data); } catch { return; }
+        handleEvent(data);
+      };
+
+      es.onerror = () => {
+        if (streamCompleted) {
+          es.close();
+          currentES = null;
+          return;
+        }
+        es.close(); currentES = null; resetBtn();
+        showError('The backend stream closed before sending a final result. Check backend logs for the pipeline error.');
+      };
+    }
+
+    function handleEvent(data) {
+      switch (data.event) {
+        case 'pipeline_start': break;
+        case 'node_start':  setNode(data.node, 'running'); break;
+        case 'node_done':   setNode(data.node, 'done');    break;
+        case 'done': {
+          streamCompleted = true;
+          const r = data.data;
+          if (r.plan)            renderPlan(r.plan);
+          if (r.digest_markdown) renderDigest(r.digest_markdown);
+          if (r.verification)    renderVerification(r.verification, r.stats);
+          currentES.close(); currentES = null;
+          resetBtn();
+          break;
+        }
+        case 'error':
+          streamCompleted = true;
+          currentES.close(); currentES = null; resetBtn();
+          showError(data.message || 'Pipeline error. Check server logs.');
+          break;
+      }
+    }
+
+    function resetBtn() {
+      const btn = $('submitBtn');
+      btn.disabled = false;
+      btn.innerHTML = '<span>✦</span> Generate Digest';
+    }
+
+    function showError(msg) {
+      $('errorMessage').textContent = msg;
+      showFlex('errorBanner');
+    }
+    function hideError() { hide('errorBanner'); }
+
+    // Ctrl+Enter shortcut
+    $('queryInput').addEventListener('keydown', e => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault(); startResearch();
+      }
+    });
+  </script>
+</body>
+</html>
