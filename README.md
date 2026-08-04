@@ -61,17 +61,6 @@ The Nginx proxy will correctly route frontend requests and securely proxy backen
 
 ---
 
-## 📈 Resume Points & Technical Highlights
-
-If you're including this project on your resume, here are several strong, metrics-driven bullet points you can use to highlight your engineering work:
-
-* **AI Agent Orchestration:** Architected a full-stack AI news aggregation platform using FastAPI and LangGraph, orchestrating a 4-stage autonomous agent pipeline (Planner, Researcher, Writer, Verifier) to generate fact-checked digests from plain-text queries.
-* **Real-time Streaming Architecture:** Implemented a resilient Server-Sent Events (SSE) streaming architecture with Nginx reverse proxying, maintaining active connections via asynchronous heartbeats during multi-minute LLM inference cycles to eliminate timeout disconnects.
-* **Automated Fact-Checking & RAG:** Integrated Groq's high-speed inference (Llama 3) and Tavily's search API, mitigating hallucinations by engineering a dedicated Verifier node that scores generated content against source materials to ensure 100% data provenance.
-* **Containerized Microservices:** Containerized the application using Docker and Docker Compose, successfully decoupling a lightweight Vanilla JS frontend from a Python backend, establishing a secure reverse-proxy configuration that bypassed strict browser CORS policies.
-
----
-
 ## 📂 Repository Structure
 
 ```text
