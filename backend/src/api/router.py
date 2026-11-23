@@ -26,6 +26,7 @@ NODE_LABELS: Dict[str, str] = {
     "researcher_node": "Researcher",
     "writer_node": "Writer",
     "verifier_node": "Verifier",
+    "persist_feed_node": "Save feed",
 }
 
 
@@ -138,7 +139,7 @@ async def _stream_research_events(query: str):
                 response.verification.score,
                 response.stats.retries,
             )
-            q.put(_sse_event("done", {"data": response.model_dump()}))
+            q.put(_sse_event("done", {"data": response.model_dump(mode="json")}))
         except Exception as exc:
             logger.exception("SSE stream failed for query=%r: %s", query, exc)
             q.put(
@@ -187,14 +188,16 @@ def _sse_event(event_type: str, payload: Dict[str, Any]) -> str:
 
 
 def _build_research_response(final_state: Dict[str, Any]) -> ResearchResponse:
-    articles: List[Dict[str, Any]] = final_state.get("articles") or []
+    articles: List[Dict[str, Any]] = final_state.get("sources", final_state.get("articles")) or []
     retry_count = int(final_state.get("retry_count", 0) or 0)
 
     return ResearchResponse(
         interests=final_state.get("interests") or [],
         plan=final_state.get("plan") or "",
         sections=_build_sections(articles),
-        digest_markdown=final_state.get("draft") or "",
+        digest_markdown=final_state.get("final_digest") or final_state.get("draft") or "",
+        feed_id=final_state.get("feed_id"),
+        stored_at=final_state.get("stored_at"),
         verification=VerificationOut(
             score=float(final_state.get("verification_score") or 0.0),
             issues=list(final_state.get("verification_issues") or []),
@@ -215,7 +218,11 @@ def _build_sections(articles: List[Dict[str, Any]]) -> List[SectionOut]:
             ArticleOut(
                 title=str(article.get("title", "")),
                 url=str(article.get("url", "")),
-                snippet=str(article.get("snippet", "")),
+                snippet=str(article.get("snippet") or ""),
+                source_type=article.get("source_type", "article"),
+                thumbnail_url=article.get("thumbnail_url"),
+                published_at=article.get("published_at"),
+                publisher=article.get("publisher"),
             )
         )
 

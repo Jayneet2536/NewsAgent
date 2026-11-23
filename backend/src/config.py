@@ -15,6 +15,8 @@ class Config:
     debug: bool = False
     groq_api_key: str = ""
     tavily_api_key: str = ""
+    youtube_api_key: str = ""
+    database_path: str = "data/newsagent.sqlite3"
     model_name: str = "llama3-8b-8192"
     chunk_size: int = 1000
     verification_threshold: int = 80
@@ -27,6 +29,8 @@ def load_config() -> Config:
         debug=os.getenv("DEBUG", "false").lower() == "true",
         groq_api_key=os.getenv("GROQ_API_KEY", ""),
         tavily_api_key=os.getenv("TAVILY_API_KEY", ""),
+        youtube_api_key=os.getenv("YOUTUBE_API_KEY", ""),
+        database_path=os.getenv("DATABASE_PATH", "data/newsagent.sqlite3"),
         model_name=os.getenv("MODEL_NAME", "llama3-8b-8192"),
         chunk_size=int(os.getenv("CHUNK_SIZE", "1000")),
         verification_threshold=int(os.getenv("VERIFICATION_THRESHOLD", "80")),

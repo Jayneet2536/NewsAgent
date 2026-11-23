@@ -1,5 +1,8 @@
 import logging
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
+from datetime import datetime
+
+from .time_window import in_window, parse_timestamp
 
 from tavily import TavilyClient
 
@@ -20,9 +23,11 @@ class TavilySearch:
         self,
         query: str,
         max_results: int = 5,
-        days: Optional[int] = 7,
+        days: Optional[int] = 1,
         topic: str = "news",
-    ) -> List[Dict[str, str]]:
+        window_start: datetime | None = None,
+        window_end: datetime | None = None,
+    ) -> List[Dict[str, Any]]:
         """Search Tavily, scoped to recent news by default.
 
         `topic="news"` + `days=N` ask Tavily itself to restrict to the last
@@ -63,8 +68,12 @@ class TavilySearch:
                 "title": result.get("title", ""),
                 "url": result.get("url", ""),
                 "snippet": result.get("content", ""),
+                "published_at": parse_timestamp(result.get("published_date")),
+                "publisher": result.get("source"),
             }
             for result in results
+            if window_start is None or window_end is None
+            or in_window(parse_timestamp(result.get("published_date")), window_start, window_end)
         ]
 
         logger.info(
@@ -75,5 +84,5 @@ class TavilySearch:
         return formatted_results
 
 
-def search_news(query: str, max_results: int = 5, days: int = 7) -> List[Dict[str, str]]:
+def search_news(query: str, max_results: int = 5, days: int = 1) -> List[Dict[str, Any]]:
     return TavilySearch().search(query=query, max_results=max_results, days=days)

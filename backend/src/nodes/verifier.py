@@ -16,7 +16,7 @@ def verifier_node(state: AgentState) -> Dict[str, Any]:
     """Verify a generated digest against source articles."""
     retry_count = state.get("retry_count", 0)
     draft = state.get("draft", "")
-    sources = _format_sources(state.get("articles", []))
+    sources = _format_sources(state.get("sources", state.get("articles", [])))
     prompt = _build_prompt(draft=draft, sources=sources)
 
     try:
@@ -54,14 +54,15 @@ def _format_sources(articles: List[Dict[str, Any]]) -> str:
     formatted_sources = []
     for article in articles:
         content = str(article.get("content", "")).strip()
-        summary = content[:500] if content else str(article.get("snippet", "")).strip()
+        summary = content if content else str(article.get("snippet", "")).strip()
         formatted_sources.append(
             "\n".join(
                 [
                     f"Topic: {article.get('topic', '')}",
                     f"Title: {article.get('title', '')}",
                     f"URL: {article.get('url', '')}",
-                    f"Summary: {summary}...",
+                    f"Source type: {article.get('source_type', 'article')}",
+                    f"Evidence: {summary}",
                 ]
             )
         )

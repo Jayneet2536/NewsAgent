@@ -3,6 +3,7 @@ from typing import Callable, Literal
 from langgraph.graph import END, StateGraph
 
 from ..config import settings
+from ..database import persist_feed_node
 from ..nodes.planner import planner_node
 from ..nodes.researcher import researcher_node
 from ..nodes.verifier import verifier_node
@@ -29,6 +30,7 @@ workflow.add_node("planner_node", planner_node)
 workflow.add_node("researcher_node", researcher_node)
 workflow.add_node("writer_node", writer_node)
 workflow.add_node("verifier_node", verifier_node)
+workflow.add_node("persist_feed_node", persist_feed_node)
 
 workflow.set_entry_point("planner_node")
 
@@ -40,9 +42,10 @@ workflow.add_conditional_edges(
     should_continue,
     {
         "rewrite": "writer_node",
-        "end": END,
+        "end": "persist_feed_node",
     },
 )
+workflow.add_edge("persist_feed_node", END)
 
 app = workflow.compile()
 

@@ -6,6 +6,7 @@ from typing import Any, Dict, List
 
 from ..config import settings
 from ..graph.state import AgentState
+from ..models import SearchPlan
 
 logger = logging.getLogger(__name__)
 
@@ -26,11 +27,12 @@ def planner_node(state: AgentState) -> Dict[str, Any]:
     try:
         response_text = _generate_search_plan(prompt)
         response_text = _sanitize_plan_text(response_text)
-        logger.debug("Planner generated search plan: %s", response_text)
-        return {"interests": interests, "plan": response_text}
+        plan = SearchPlan.model_validate_json(response_text)
     except Exception as error:
         logger.error("Planner API call failed, using fallback plan: %s", error)
-        return {"interests": interests, "plan": _fallback_plan(interests)}
+        plan = _fallback_plan(interests)
+
+    return {"interests": interests, "plan": plan.model_dump_json(), **plan.model_dump()}
 
 
 def _build_prompt(interests: List[str]) -> str:
@@ -102,6 +104,7 @@ def _generate_search_plan(prompt: str) -> str:
     response = client.chat.completions.create(
         model="openai/gpt-oss-120b",
         messages=[{"role": "user", "content": prompt}],
+        response_format={"type": "json_object"},
     )
     response_text = (response.choices[0].message.content or "").strip()
 
@@ -111,13 +114,12 @@ def _generate_search_plan(prompt: str) -> str:
     return response_text
 
 
-def _fallback_plan(interests: List[str]) -> str:
+def _fallback_plan(interests: List[str]) -> SearchPlan:
     """Create a simple search plan directly from user interests."""
-    if not interests:
-        return "- Search for latest general news"
-
-    return "\n".join(
-        f'- Search for "latest {interest} news"' for interest in interests
+    topics = interests or ["general"]
+    return SearchPlan(
+        web_queries=[f"{interest} news" for interest in topics],
+        youtube_queries=[f"{interest} news briefing announcement interview" for interest in topics],
     )
 
 

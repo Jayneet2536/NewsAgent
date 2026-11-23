@@ -5,6 +5,7 @@ langchain
 langchain-openai
 groq
 tavily-python
+youtube-transcript-api>=1.2,<2
 beautifulsoup4
 requests
 python-dotenv

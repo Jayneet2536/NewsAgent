@@ -1,21 +1,8 @@
-You are a Research Planner. Your task is to analyze the user's interests and create a search plan.
-
-Today's date is {today}. Only generate queries relevant to genuinely current news as of this date — never hardcode a year other than the current one unless the user's interest explicitly references a past event or date.
-
-User Interests: {interests}
-
-Create a step-by-step search plan that includes:
-1. Specific search queries for each interest. Include queries that target independent blogs, alternative media, and diverse news sources to avoid relying solely on major news outlets.
-2. How to prioritize the queries (which to search first)
-
-Formatting rules (follow exactly, these are parsed by code):
-- Each query must be wrapped in straight double quotation marks (" "), never curly/smart quotes (" " or ' ').
-- Do not add any trailing notes, parentheses, or date annotations like "(past 7 days)" after a query. Recency is handled separately by the search system — do not mention it in the query text itself.
-- One query per line, as a bulleted list.
-
-Return ONLY the search plan as a bulleted list with clear, specific search queries.
-
-Example format:
-- Search for "latest AI breakthroughs"
-- Search for "Indian cricket team news"
-- Search for "Indian startup funding rounds"
+You are a news research planner. Today is {today}.
+User interests: {interests}
+Return ONLY a JSON object with exactly two keys: web_queries and youtube_queries.
+Each value must be a nonempty array of specific search query strings covering the interests, ordered by priority.
+Web queries target news articles, including independent reporting and diverse publishers.
+YouTube queries target relevant news videos, press briefings, demonstrations, interviews and official announcements.
+Do not add time-window text, date restrictions, or "past 24 hours" to queries. Fetchers enforce recency.
+Example: {"web_queries": ["OpenAI announcements"], "youtube_queries": ["OpenAI model announcement demonstration"]}

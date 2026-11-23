@@ -1,0 +1,4 @@
+data/
+.test-tmp-newsagent*/
+__pycache__/
+*.py[cod]

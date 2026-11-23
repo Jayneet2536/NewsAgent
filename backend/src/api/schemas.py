@@ -1,6 +1,6 @@
-
-
 from typing import List
+from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, field_validator
 
@@ -33,6 +33,10 @@ class ArticleOut(BaseModel):
     title: str
     url: str
     snippet: str
+    source_type: Literal["article", "youtube"] = "article"
+    thumbnail_url: str | None = None
+    published_at: datetime | None = None
+    publisher: str | None = None
 
 
 class SectionOut(BaseModel):
@@ -67,6 +71,8 @@ class ResearchResponse(BaseModel):
     digest_markdown: str
     verification: VerificationOut
     stats: StatsOut
+    feed_id: int | None = None
+    stored_at: datetime | None = None
 
 
 

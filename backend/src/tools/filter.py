@@ -108,7 +108,7 @@ class RelevanceFilter:
     def _article_text(self, article: Dict[str, Any]) -> str:
         return " ".join(
             str(article.get(field, ""))
-            for field in ("title", "topic", "snippet", "content")
+            for field in ("title", "snippet", "content")
             if article.get(field)
         )
 

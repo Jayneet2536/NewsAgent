@@ -13,9 +13,11 @@ WRITER_MODEL = "llama-3.3-70b-versatile"
 
 def writer_node(state: AgentState) -> Dict[str, Any]:
     """Generate a markdown news digest from researched articles."""
-    articles = state.get("articles", [])
+    articles = state.get("sources", state.get("articles", []))
     articles_context = _format_articles(articles)
     prompt = _build_prompt(articles_context)
+    if state.get("verification_issues"):
+        prompt += "\nCorrect these verification issues:\n" + "\n".join(state["verification_issues"])
 
     try:
         response_text = _generate_digest(prompt)
@@ -45,7 +47,10 @@ def _format_articles(articles: List[Dict[str, Any]]) -> str:
                     f"Topic: {article.get('topic', '')}",
                     f"Title: {article.get('title', '')}",
                     f"URL: {article.get('url', '')}",
-                    f"Content: {content[:500]}...",
+                    f"Source type: {article.get('source_type', 'article')}",
+                    f"Publisher: {article.get('publisher') or 'Unknown'}",
+                    f"Published at: {article.get('published_at') or 'Unknown'}",
+                    f"Content: {content}",
                 ]
             )
         )

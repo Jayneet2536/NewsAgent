@@ -1,155 +1,114 @@
 import logging
-import re
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlsplit, urlunsplit
 
 from ..config import settings
 from ..graph.state import AgentState
+from ..models import NewsSource, SearchPlan
 from ..tools.fetcher import ArticleFetcher
 from ..tools.filter import RelevanceFilter
 from ..tools.search import TavilySearch
+from ..tools.youtube import YouTubeFetcher
+from ..tools.time_window import in_window, parse_timestamp
 
 logger = logging.getLogger(__name__)
 
-_SMART_QUOTES = str.maketrans({
-    "\u201c": '"', "\u201d": '"',
-    "\u2018": "'", "\u2019": "'",
-})
-_ZERO_WIDTH_CHARS = re.compile(r"[\u200b\u200c\u200d\ufeff]")
-
 
 def researcher_node(state: AgentState) -> Dict[str, Any]:
-    """Search, fetch, and filter articles for the user's interests."""
     interests = state.get("interests", [])
-    queries = _extract_search_queries(state.get("plan", ""), interests)
+    plan = SearchPlan.model_validate({
+        "web_queries": state.get("web_queries") or [f"{topic} news" for topic in interests] or ["general news"],
+        "youtube_queries": state.get("youtube_queries") or [f"{topic} news briefing" for topic in interests] or ["general news briefing"],
+    })
+    end = datetime.now(timezone.utc)
+    start = end - timedelta(hours=24)
+    collected = []
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        jobs = [
+            pool.submit(_fetch_articles, plan.web_queries, interests, start, end),
+            pool.submit(_fetch_videos, plan.youtube_queries, interests, start, end),
+        ]
+        for job in jobs:
+            try:
+                collected.extend(job.result())
+            except Exception:
+                logger.exception("Research provider failed; retaining other provider's results.")
 
-    if not queries:
-        logger.warning("Researcher received no search queries.")
-        return {"articles": []}
-
-    try:
-        search_client = TavilySearch(api_key=settings.tavily_api_key)
-    except Exception as error:
-        logger.error("Could not initialize Tavily search client: %s", error)
-        return {"articles": []}
-
-    fetcher = ArticleFetcher()
-    relevance_filter = RelevanceFilter(use_llm=False)
-    fetched_articles: List[Dict[str, Any]] = []
-
-    for query in queries:
-        logger.info("Researcher searching query=%r", query)
+    sources = []
+    seen = set()
+    relevance = RelevanceFilter(use_llm=False)
+    for item in collected:
         try:
-            search_results = search_client.search(query, max_results=3, days=7, topic="news")
-        except Exception as error:
-            logger.error("Search failed for query=%r: %s", query, error)
+            source = NewsSource.model_validate(item)
+        except ValueError:
+            logger.warning("Skipping invalid research source.")
             continue
+        if not in_window(source.published_at, start, end):
+            continue
+        parts = urlsplit(str(source.url))
+        canonical = urlunsplit((parts.scheme.lower(), parts.netloc.lower(), parts.path.rstrip("/"), parts.query, ""))
+        if canonical in seen:
+            continue
+        # Score evidence itself, excluding the assigned topic, which would create false matches.
+        text = f"{source.title} {source.snippet or ''} {source.content}"
+        matches = [(relevance.score_relevance(interest, text), interest) for interest in interests]
+        if matches:
+            score, topic = max(matches, key=lambda match: match[0])
+            if score < relevance.threshold:
+                continue
+            source.topic = topic
+        seen.add(canonical)
+        sources.append(source.model_dump(mode="json"))
+    return {"sources": sources, "articles": sources,
+            "window_start": start.isoformat(), "window_end": end.isoformat()}
 
-        for result in search_results:
+
+def _fetch_articles(queries, interests, start, end) -> list[NewsSource]:
+    search = TavilySearch(api_key=settings.tavily_api_key)
+    fetcher = ArticleFetcher()
+    sources = []
+    seen = set()
+    for query in queries:
+        try:
+            results = search.search(query, max_results=3, days=1, topic="news",
+                                    window_start=start, window_end=end)
+        except Exception:
+            logger.exception("Tavily query failed: %r", query)
+            continue
+        for result in results:
             url = result.get("url", "")
-            if not url:
-                logger.warning("Skipping search result without url query=%r", query)
+            if not url or url in seen or _is_non_article_url(url):
                 continue
-
-            if _is_non_article_url(url):
-                logger.info("Skipping non-article url=%r", url)
+            seen.add(url)
+            published_at = parse_timestamp(result.get("published_at"))
+            if not in_window(published_at, start, end):
                 continue
-
-            logger.info("Researcher fetching url=%r", url)
             try:
                 content = fetcher.fetch(url)
-            except Exception as error:
-                logger.error("Fetch failed for url=%r: %s", url, error)
-                continue
-
-            if not content:
-                logger.warning("Article fetch failed, falling back to snippet for url=%r", url)
-                content = result.get("snippet", "")
                 if not content:
-                    logger.warning("Skipping article with no fetched content and no snippet url=%r", url)
                     continue
-
-            fetched_articles.append(
-                {
-                    "title": result.get("title", ""),
-                    "url": url,
-                    "content": content,
-                    "snippet": result.get("snippet", ""),
-                    "topic": _best_topic(query, interests),
-                }
-            )
-
-    filtered_articles = _filter_by_interests(
-        articles=fetched_articles,
-        interests=interests,
-        relevance_filter=relevance_filter,
-    )
-    logger.info("Researcher returning %s filtered articles", len(filtered_articles))
-    return {"articles": filtered_articles}
+                sources.append(NewsSource(
+                    title=result.get("title", ""), url=url, source_type="article",
+                    content=content, snippet=result.get("snippet"),
+                    published_at=published_at, publisher=result.get("publisher"),
+                    topic=_best_topic(query, interests),
+                ))
+            except Exception:
+                logger.warning("Skipping article that could not be fetched: %s", url)
+    return sources
 
 
-def _extract_search_queries(plan: str, interests: List[str]) -> List[str]:
-    """Extract likely search queries from a planner-generated text plan."""
-    queries = []
-
-    for line in plan.splitlines():
-        cleaned_line = line.translate(_SMART_QUOTES)
-        cleaned_line = _ZERO_WIDTH_CHARS.sub("", cleaned_line).strip()
-        if not cleaned_line:
-            continue
-
-        quoted_queries = re.findall(r'"([^"]+)"', cleaned_line)
-        if quoted_queries:
-            queries.extend(q.strip() for q in quoted_queries)
-            continue
-
-        query = re.sub(r"^[-*\d.\s]+", "", cleaned_line)
-        query = re.sub(r"^search\s+for\s+", "", query, flags=re.IGNORECASE)
-        query = re.sub(r"\s*\([^()]*\)\s*$", "", query)  # drop trailing "(past 7 days)" etc.
-        query = query.strip()
-        if query:
-            queries.append(query)
-
-    if not queries:
-        queries = [f"latest {interest} news" for interest in interests]
-
-    return _deduplicate(queries)
-
-
-def _filter_by_interests(
-    articles: List[Dict[str, Any]],
-    interests: List[str],
-    relevance_filter: RelevanceFilter,
-) -> List[Dict[str, Any]]:
-    """Filter fetched articles for each interest and aggregate the results."""
-    if not interests:
-        return [_article_output(article) for article in articles]
-
-    filtered_articles: List[Dict[str, Any]] = []
-    seen_urls = set()
-
-    for interest in interests:
-        relevant_articles = relevance_filter.filter_articles(articles, interest)
-        for article in relevant_articles:
-            url = article.get("url", "")
-            if url in seen_urls:
-                continue
-
-            seen_urls.add(url)
-            filtered_articles.append(_article_output({**article, "topic": interest}))
-
-    return filtered_articles
-
-
-def _article_output(article: Dict[str, Any]) -> Dict[str, str]:
-    """Return the article fields expected by AgentState."""
-    return {
-        "title": str(article.get("title", "")),
-        "url": str(article.get("url", "")),
-        "content": str(article.get("content", "")),
-        "snippet": str(article.get("snippet", "")),
-        "topic": str(article.get("topic", "")),
-    }
+def _fetch_videos(queries, interests, start, end) -> list[NewsSource]:
+    fetcher = YouTubeFetcher()
+    sources = []
+    for query in queries:
+        try:
+            sources.extend(fetcher.fetch(query, _best_topic(query, interests), start, end))
+        except Exception:
+            logger.exception("YouTube query failed: %r", query)
+    return sources
 
 
 def _best_topic(query: str, interests: List[str]) -> str:

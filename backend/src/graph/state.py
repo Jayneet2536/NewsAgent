@@ -12,6 +12,13 @@ class Article(TypedDict):
 class AgentState(TypedDict):
     interests: List[str]
     plan: str
+    web_queries: List[str]
+    youtube_queries: List[str]
+    sources: List[Dict]
+    window_start: str
+    window_end: str
+    feed_id: int
+    stored_at: str
     articles: List[Dict]
     draft: str
     verification_score: float
