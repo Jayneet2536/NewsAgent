@@ -5,12 +5,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .config import settings
+from .errors import PipelineError
 
 
 def persist_feed_node(state: dict) -> dict:
+    digest = state.get("draft", "").strip()
+    if not digest:
+        raise PipelineError("There is no completed digest to save.")
     path = Path(settings.database_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    digest = state.get("draft", "")
     with sqlite3.connect(path) as connection:
         connection.execute("""
             CREATE TABLE IF NOT EXISTS news_feeds (

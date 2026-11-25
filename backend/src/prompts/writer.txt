@@ -22,3 +22,6 @@ Return ONLY the markdown digest with this structure:
 ## [Next Topic Name]
 
 - **[Article Title]**([URL]): Summary...
+This is one bounded evidence batch. Write at most one short item per source,
+using only the provided passages. Keep each item to two concise sentences and
+one paragraph, with its original supporting URL. Do not add a preamble or conclusion.

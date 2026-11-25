@@ -1,128 +1,97 @@
-import json
 import logging
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
 from ..config import settings
+from ..errors import PipelineError
+from ..evidence import evidence_batches, format_evidence
 from ..graph.state import AgentState
+from ..llm import generate_text
 
 logger = logging.getLogger(__name__)
-
 PROMPT_PATH = Path(__file__).resolve().parents[1] / "prompts" / "verifier.txt"
-VERIFIER_MODEL = "openai/gpt-oss-120b"
+_LINK = re.compile(r"https?://[^\s<>)\]]+")
+
+
+class VerificationResult(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
+    score: float = Field(ge=0, le=100)
+    issues: list[str]
+
+
+def _digest_items(draft: str) -> list[str]:
+    # Every paragraph/bullet is checked, including prose outside the expected format.
+    parts = re.split(r"\n(?=[-*] )|\n\s*\n", draft.strip())
+    heading = ""
+    items = []
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+        if all(line.startswith("#") for line in part.splitlines() if line.strip()):
+            heading = part
+        else:
+            items.append(f"{heading}\n\n{part}" if heading else part)
+    return items
 
 
 def verifier_node(state: AgentState) -> Dict[str, Any]:
-    """Verify a generated digest against source articles."""
-    retry_count = state.get("retry_count", 0)
-    draft = state.get("draft", "")
-    sources = _format_sources(state.get("sources", state.get("articles", [])))
-    prompt = _build_prompt(draft=draft, sources=sources)
-
-    try:
-        response_text = _generate_verification(prompt)
-        score, issues = _parse_verification_response(response_text)
-    except json.JSONDecodeError as error:
-        logger.error("Verifier JSON parsing failed: %s", error)
-        score, issues = 0.0, ["Verifier returned invalid JSON."]
-    except Exception as error:
-        logger.error("Verifier API call failed: %s", error)
-        score, issues = 0.0, ["Verifier API call failed."]
-
-    logger.info(
-        "Verification score=%s threshold=%s retry_count=%s max_retries=%s",
-        score,
-        settings.verification_threshold,
-        retry_count,
-        settings.max_retries,
-    )
-    if issues:
-        logger.warning("Verification issues: %s", issues)
-
-    return {
-        "verification_score": score,
-        "verification_issues": issues,
-        "retry_count": retry_count + 1,
-    }
+    draft = state.get("draft", "").strip()
+    if not draft:
+        raise PipelineError("There is no generated draft to verify.")
+    originals = state.get("sources", state.get("articles", []))
+    batches = state.get("draft_batches") or [{"draft": draft, "sources": originals}]
+    scores = []
+    issues = []
+    for batch_index, batch in enumerate(batches, 1):
+        evidence = batch["sources"]
+        known_urls = {str(source["url"]) for source in evidence}
+        for item in _digest_items(batch["draft"]):
+            cited = set(_LINK.findall(item))
+            if not cited or not cited <= known_urls:
+                scores.append(0.0)
+                issues.append("Missing or unknown supporting source link in: " + item[:200])
+            related = [source for source in evidence if str(source["url"]) in cited] or evidence
+            if not related:
+                raise PipelineError("No original source evidence is available for verification.")
+            build_prompt = lambda context: _build_prompt(item, context)
+            chunks = evidence_batches(related, build_prompt, settings.llm_input_budget, item)
+            if len(chunks) > 1:
+                raise PipelineError("A digest item cites too much evidence for one verification request. Use shorter items.")
+            logger.info("Verifier batch=%s item_sources=%s", batch_index, len(chunks[0]))
+            try:
+                score, item_issues = _parse_verification_response(
+                    _generate_verification(build_prompt(format_evidence(chunks[0]))))
+            except ValidationError as error:
+                raise PipelineError("Verifier returned invalid JSON or an invalid score. Try again.") from error
+            scores.append(score)
+            issues.extend(item_issues)
+    if not scores:
+        raise PipelineError("The writer produced no verifiable news items.")
+    score = min(scores)
+    retry_count = state.get("retry_count", 0) + 1
+    logger.info("Verification score=%s threshold=%s attempt=%s issues=%s",
+                score, settings.verification_threshold, retry_count, len(issues))
+    return {"verification_score": score, "verification_issues": list(dict.fromkeys(issues)),
+            "retry_count": retry_count}
 
 
 def _format_sources(articles: List[Dict[str, Any]]) -> str:
-    """Format source articles with URLs and short summaries for verification."""
-    if not articles:
-        return "No source articles available."
-
-    formatted_sources = []
-    for article in articles:
-        content = str(article.get("content", "")).strip()
-        summary = content if content else str(article.get("snippet", "")).strip()
-        formatted_sources.append(
-            "\n".join(
-                [
-                    f"Topic: {article.get('topic', '')}",
-                    f"Title: {article.get('title', '')}",
-                    f"URL: {article.get('url', '')}",
-                    f"Source type: {article.get('source_type', 'article')}",
-                    f"Evidence: {summary}",
-                ]
-            )
-        )
-
-    return "\n\n---\n\n".join(formatted_sources)
+    return format_evidence(articles) if articles else "No source evidence available."
 
 
 def _build_prompt(draft: str, sources: str) -> str:
-    """Load the verifier prompt template and inject draft and source data."""
     template = PROMPT_PATH.read_text(encoding="utf-8")
-    logger.debug(
-        "Building verifier prompt draft_length=%s sources_length=%s",
-        len(draft),
-        len(sources),
-    )
     return template.replace("{draft}", draft).replace("{sources}", sources)
 
 
 def _generate_verification(prompt: str) -> str:
-    """Generate a JSON verification result using Groq JSON mode."""
-    if not settings.groq_api_key:
-        raise ValueError("GROQ_API_KEY is required for verifier generation.")
-
-    from groq import Groq
-
-    client = Groq(api_key=settings.groq_api_key)
-    response = client.chat.completions.create(
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "You are a strict fact verifier. Return only valid JSON "
-                    'with this schema: {"score": number, "issues": string[]}.'
-                ),
-            },
-            {
-                "role": "user",
-                "content": prompt,
-            },
-        ],
-        model=VERIFIER_MODEL,
-        response_format={"type": "json_object"},
-        temperature=0,
-    )
-
-    response_text = response.choices[0].message.content or ""
-    if not response_text.strip():
-        raise ValueError("Verifier returned an empty response.")
-
-    return response_text
+    return generate_text(prompt, model=settings.verifier_model, stage="Verifier", json_mode=True)
 
 
 def _parse_verification_response(response_text: str) -> Tuple[float, List[str]]:
-    """Parse the verifier JSON response into a bounded score and issue list."""
-    data = json.loads(response_text)
-    score = float(data.get("score", 0))
-    score = min(max(score, 0.0), 100.0)
-
-    raw_issues = data.get("issues", [])
-    issues = [str(issue) for issue in raw_issues] if isinstance(raw_issues, list) else []
-
-    logger.debug("Parsed verifier response score=%s issues=%s", score, issues)
-    return score, issues
+    result = VerificationResult.model_validate_json(response_text)
+    return result.score, result.issues

@@ -12,6 +12,8 @@ env/
 .env
 .env.*
 .pytest_cache/
+.test-tmp-newsagent*
+data/
 .mypy_cache/
 .ruff_cache/
 htmlcov/

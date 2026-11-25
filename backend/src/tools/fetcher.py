@@ -39,25 +39,38 @@ class ArticleFetcher:
                 response.raise_for_status()
 
                 text = self._extract_text(response.text)
-                if text:
+                if text and len(text) >= 200 and not self._is_boilerplate(text):
                     logger.info("Fetched article url=%r length=%s", url, len(text))
                     return text
 
                 logger.warning("No article text found url=%r attempt=%s", url, attempt)
                 break
             except RequestException as error:
+                status = getattr(getattr(error, "response", None), "status_code", None)
                 logger.warning(
                     "Article fetch failed url=%r attempt=%s error=%s",
                     url,
                     attempt,
                     error,
                 )
+                if status is not None and 400 <= status < 500 and status not in (408, 429):
+                    # A blocked/paywalled/not-found article needs another source,
+                    # rather than repeated identical requests.
+                    break
             except Exception:
                 logger.exception("Unexpected article fetch error url=%r", url)
                 return None
 
         logger.error("Article fetch exhausted retries url=%r", url)
         return None
+
+    def _is_boilerplate(self, text: str) -> bool:
+        lower = text.lower()
+        return any(phrase in lower for phrase in (
+            "verify you are human", "enable javascript and cookies to continue",
+            "checking your browser", "access to this page has been denied",
+            "please enable javascript to continue", "just a moment...",
+        ))
 
     def _extract_text(self, html: str) -> Optional[str]:
         with warnings.catch_warnings():
@@ -75,7 +88,8 @@ class ArticleFetcher:
         if text:
             return text
 
-        return self._extract_from_metadata(soup)
+        # Metadata descriptions alone are snippets, not fetched article evidence.
+        return None
 
     def _extract_from_article_containers(self, soup: BeautifulSoup) -> Optional[str]:
         selectors = [

@@ -7,6 +7,8 @@ from typing import Any, Dict, List
 from ..config import settings
 from ..graph.state import AgentState
 from ..models import SearchPlan
+from ..errors import PipelineError
+from ..llm import generate_text
 
 logger = logging.getLogger(__name__)
 
@@ -28,10 +30,14 @@ def planner_node(state: AgentState) -> Dict[str, Any]:
         response_text = _generate_search_plan(prompt)
         response_text = _sanitize_plan_text(response_text)
         plan = SearchPlan.model_validate_json(response_text)
+    except PipelineError:
+        raise
     except Exception as error:
         logger.error("Planner API call failed, using fallback plan: %s", error)
         plan = _fallback_plan(interests)
 
+    plan.web_queries = plan.web_queries[:settings.research_max_queries]
+    plan.youtube_queries = plan.youtube_queries[:settings.research_max_queries]
     return {"interests": interests, "plan": plan.model_dump_json(), **plan.model_dump()}
 
 
@@ -44,6 +50,7 @@ def _build_prompt(interests: List[str]) -> str:
 
     prompt = template.replace("{interests}", interests_text)
     prompt = prompt.replace("{today}", today_text)
+    prompt += f"\nGenerate at most {settings.research_max_queries} queries per list."
     return prompt
 
 
@@ -94,24 +101,7 @@ def _clean_interest(text: str) -> str:
 
 
 def _generate_search_plan(prompt: str) -> str:
-    """Call Groq through the official groq SDK."""
-    if not settings.groq_api_key:
-        raise ValueError("GROQ_API_KEY is required for planner generation.")
-
-    from groq import Groq
-
-    client = Groq(api_key=settings.groq_api_key)
-    response = client.chat.completions.create(
-        model="openai/gpt-oss-120b",
-        messages=[{"role": "user", "content": prompt}],
-        response_format={"type": "json_object"},
-    )
-    response_text = (response.choices[0].message.content or "").strip()
-
-    if not response_text:
-        raise ValueError("Planner returned an empty response.")
-
-    return response_text
+    return generate_text(prompt, model=settings.planner_model, stage="Planner", json_mode=True)
 
 
 def _fallback_plan(interests: List[str]) -> SearchPlan:

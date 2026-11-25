@@ -1,97 +1,59 @@
 import logging
+import re
+from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List
 
 from ..config import settings
+from ..errors import PipelineError
+from ..evidence import evidence_batches, format_evidence
 from ..graph.state import AgentState
+from ..llm import generate_text
 
 logger = logging.getLogger(__name__)
-
 PROMPT_PATH = Path(__file__).resolve().parents[1] / "prompts" / "writer.txt"
-WRITER_MODEL = "llama-3.3-70b-versatile"
 
 
 def writer_node(state: AgentState) -> Dict[str, Any]:
-    """Generate a markdown news digest from researched articles."""
-    articles = state.get("sources", state.get("articles", []))
-    articles_context = _format_articles(articles)
-    prompt = _build_prompt(articles_context)
-    if state.get("verification_issues"):
-        prompt += "\nCorrect these verification issues:\n" + "\n".join(state["verification_issues"])
+    sources = state.get("sources", state.get("articles", []))
+    if not sources:
+        raise PipelineError("No usable news sources were found in the 24-hour window. Try a different topic.")
+    feedback = "\n".join(state.get("verification_issues", []))
+    # Feedback is bounded separately; original evidence always retains priority.
+    feedback = feedback.encode("utf-8")[:600].decode("utf-8", errors="ignore")
+    def build_prompt(context):
+        prompt = _build_prompt(context)
+        if feedback:
+            prompt += "\nCorrect these verification issues:\n" + feedback
+        return prompt
 
-    try:
-        response_text = _generate_digest(prompt)
-        logger.debug("Writer generated draft length=%s", len(response_text))
-        return {"draft": response_text}
-    except Exception as error:
-        logger.error("Writer API call failed: %s", error)
-        return {
-            "draft": (
-                "Unable to generate the news digest right now. "
-                "Please try again after checking the Groq configuration."
-            )
-        }
+    batches = evidence_batches(sources, build_prompt, settings.llm_input_budget,
+                               " ".join(state.get("interests", [])))
+    drafts = []
+    for index, batch in enumerate(batches, 1):
+        logger.info("Writer batch %s/%s sources=%s", index, len(batches), len(batch))
+        draft = _generate_digest(build_prompt(format_evidence(batch)))
+        drafts.append({"draft": draft, "sources": batch})
+    sections = defaultdict(list)
+    for batch in drafts:
+        topic = ""
+        for paragraph in re.split(r"\n\s*\n", batch["draft"]):
+            if paragraph.startswith("## ") and "\n" not in paragraph.strip():
+                topic = paragraph.strip()
+            else:
+                sections[topic].append(paragraph)
+    merged = "\n\n".join("\n\n".join(([topic] if topic else []) + paragraphs)
+                          for topic, paragraphs in sections.items())
+    return {"draft": merged, "draft_batches": drafts}
 
 
 def _format_articles(articles: List[Dict[str, Any]]) -> str:
-    """Format article dictionaries into prompt-ready context text."""
-    if not articles:
-        return "No articles available."
-
-    formatted_articles = []
-    for article in articles:
-        content = str(article.get("content", ""))
-        formatted_articles.append(
-            "\n".join(
-                [
-                    f"Topic: {article.get('topic', '')}",
-                    f"Title: {article.get('title', '')}",
-                    f"URL: {article.get('url', '')}",
-                    f"Source type: {article.get('source_type', 'article')}",
-                    f"Publisher: {article.get('publisher') or 'Unknown'}",
-                    f"Published at: {article.get('published_at') or 'Unknown'}",
-                    f"Content: {content}",
-                ]
-            )
-        )
-
-    return "\n\n---\n\n".join(formatted_articles)
+    return format_evidence(articles) if articles else "No sources available."
 
 
 def _build_prompt(articles_context: str) -> str:
-    """Load the writer prompt template and inject formatted articles."""
-    template = PROMPT_PATH.read_text(encoding="utf-8")
-    logger.debug("Building writer prompt with article context length=%s", len(articles_context))
-    return template.replace("{articles}", articles_context)
+    return PROMPT_PATH.read_text(encoding="utf-8").replace("{articles}", articles_context)
 
 
 def _generate_digest(prompt: str) -> str:
-    """Generate the digest using Groq's streaming chat completion API."""
-    if not settings.groq_api_key:
-        raise ValueError("GROQ_API_KEY is required for writer generation.")
-
-    from groq import Groq
-
-    client = Groq(api_key=settings.groq_api_key)
-    stream = client.chat.completions.create(
-        messages=[
-            {
-                "role": "user",
-                "content": prompt,
-            }
-        ],
-        model=WRITER_MODEL,
-        stream=True,
-    )
-
-    response_parts = []
-    for chunk in stream:
-        delta = chunk.choices[0].delta.content
-        if delta:
-            response_parts.append(delta)
-
-    response_text = "".join(response_parts).strip()
-    if not response_text:
-        raise ValueError("Writer returned an empty response.")
-
-    return response_text
+    return generate_text(prompt, model=settings.writer_model, stage="Writer")

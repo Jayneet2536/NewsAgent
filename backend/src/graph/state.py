@@ -20,6 +20,7 @@ class AgentState(TypedDict):
     feed_id: int
     stored_at: str
     articles: List[Dict]
+    draft_batches: List[Dict]
     draft: str
     verification_score: float
     verification_issues: List[str]

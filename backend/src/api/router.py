@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from ..graph.workflow import app as graph_app
+from ..errors import PipelineError
 from .schemas import (
     ArticleOut,
     ErrorResponse,
@@ -41,13 +42,18 @@ async def health_check() -> Dict[str, str]:
     responses={
         422: {"description": "Query is empty or whitespace-only"},
         500: {"model": ErrorResponse, "description": "Graph run failed"},
+        502: {"model": ErrorResponse, "description": "Research provider or generation failed"},
     },
 )
 async def run_research(request: ResearchRequest) -> ResearchResponse:
     logger.info("POST /api/research query=%r", request.query)
 
     try:
-        final_state: Dict[str, Any] = graph_app.invoke(_initial_state(request.query))
+        import asyncio
+        final_state: Dict[str, Any] = await asyncio.to_thread(graph_app.invoke, _initial_state(request.query))
+    except PipelineError as exc:
+        logger.warning("Research failed: %s", exc)
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     except Exception as exc:
         logger.exception("Graph run failed for query=%r", request.query)
         raise HTTPException(
@@ -145,7 +151,8 @@ async def _stream_research_events(query: str):
             q.put(
                 _sse_event(
                     "error",
-                    {"message": "Research pipeline failed. Check server logs for details."},
+                    {"message": str(exc) if isinstance(exc, PipelineError)
+                     else "Research pipeline failed. Check server logs for details."},
                 )
             )
         finally:
