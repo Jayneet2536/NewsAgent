@@ -68,3 +68,24 @@ After changing environment values only, use
 `docker compose up -d --force-recreate backend`.
 Recreating the current backend container may remove its SQLite file unless you
 have mounted a persistent database volume as described above.
+
+Hosted deployments can set `DATABASE_URL` to a PostgreSQL connection string
+(for example, the pooled connection URL from Neon, including `sslmode=require`).
+When set, it takes precedence over `DATABASE_PATH`; the `news_feeds` table is
+created automatically on the first completed run. A failed PostgreSQL save does
+not fall back to local disk. Existing SQLite records are not imported automatically.
+Keep `DATABASE_URL` only in backend secrets, never in frontend settings.
+
+The Docker image listens on `PORT` when provided by a host, otherwise port `8000`.
+For Render, create a Docker Web Service with root directory `backend`, Dockerfile
+`./Dockerfile`, Free instance type, and health check `/api/health`. Set backend API
+keys, `DATABASE_URL`, and `FRONTEND_ORIGIN` in Render environment settings.
+
+The frontend supports separate static hosting. Create a Render Static Site with
+root directory `frontend`, build command `node build.mjs`, and publish directory
+`dist`. Set its **public** build variable `PUBLIC_API_BASE` to the backend HTTPS
+origin, for example `https://newsagent-api.onrender.com`, without `/api` or a
+trailing path. Rebuilding generates `dist/config.js`. Set the backend's
+`FRONTEND_ORIGIN` to the actual frontend HTTPS origin. Local Docker continues to
+use same-origin Nginx routing with the checked-in default `frontend/config.js`.
+Static hosting does not run the frontend Nginx container or Docker Compose.

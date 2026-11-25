@@ -17,6 +17,7 @@ class Config:
     tavily_api_key: str = ""
     youtube_api_key: str = ""
     database_path: str = "data/newsagent.sqlite3"
+    database_url: str = ""
     model_name: str = "llama3-8b-8192"
     planner_model: str = "openai/gpt-oss-120b"
     writer_model: str = "openai/gpt-oss-120b"
@@ -39,6 +40,7 @@ def load_config() -> Config:
         tavily_api_key=os.getenv("TAVILY_API_KEY", ""),
         youtube_api_key=os.getenv("YOUTUBE_API_KEY", ""),
         database_path=os.getenv("DATABASE_PATH", "data/newsagent.sqlite3"),
+        database_url=os.getenv("DATABASE_URL", "").strip(),
         model_name=os.getenv("MODEL_NAME", "llama3-8b-8192"),
         planner_model=os.getenv("PLANNER_MODEL") or os.getenv("GROQ_MODEL") or "openai/gpt-oss-120b",
         writer_model=os.getenv("WRITER_MODEL") or os.getenv("GROQ_MODEL") or "openai/gpt-oss-120b",

@@ -16,6 +16,7 @@ dependencies = [
     "requests",
     "python-dotenv",
     "pydantic",
+    "psycopg[binary]>=3.2,<4",
     "httpx",
     "pytest",
 ]

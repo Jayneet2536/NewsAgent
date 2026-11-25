@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -459,7 +459,7 @@
 
     <!-- PIPELINE STATUS -->
     <div id="pipelinePanel" class="glass-card">
-      <div class="section-label">⚡ Pipeline Status</div>
+      <div class="section-label">⚡ Pipeline Status - Will take time</div>
       <div class="pipeline-track" id="pipelineTrack"></div>
     </div>
 
@@ -492,15 +492,15 @@
 
   </div><!-- /page-wrapper -->
 
+  <script src="config.js"></script>
   <script>
     /* ------------------------------------------------------------------
        CONFIG
     ------------------------------------------------------------------ */
-    // In Docker (served by Nginx), API calls go through the Nginx proxy at ''.
-    // When opening index.html directly from disk (local dev), fall back to localhost:8000.
-    const API_BASE = (window.location.protocol === 'file:')
-      ? 'http://localhost:8000'
-      : '';
+    // Static hosting supplies an explicit backend origin; Docker uses /api locally.
+    const API_BASE = String(window.NEWSAGENT_CONFIG?.apiBase ||
+      (window.location.protocol === 'file:' ? 'http://localhost:8000' : '')
+    ).replace(/\/+$/, '');
 
     /* ------------------------------------------------------------------
        NODE METADATA
